@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Stack’Em High! Ensembles Using tidymodels</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Max Kuhn, Simon Couch" />
+    <meta name="date" content="2020-10-05" />
+    <script src="libs/header-attrs-2.3/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <script src="libs/kePrint-0.0.1/kePrint.js"></script>
+    <link href="libs/lightable-0.0.1/lightable.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.2/css/all.css" integrity="sha384-oS3vJWv+0UjzBfQzYUhtDYW+Pj2yciDJxpsK1OYPAYjqT085Qq/1cq5FLXAZQ7Ay" crossorigin="anonymous">
+    <link rel="stylesheet" href="assets/css/aml-theme.css" type="text/css" />
+    <link rel="stylesheet" href="assets/css/aml-fonts.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+
+
+
+
+
+class: title-slide, middle, center
+
+
+# Stack'Em High! &lt;br&gt; Ensembles Using tidymodels
+
+##  Max Kuhn, Simon Couch
+
+---
+# Ensemble Models
+
+We typically think of models like random forest or boosting models when we talk about ensemble methods. 
+
+ * These are combinations of the _same type_ of model (e.g. trees).
+
+There is a more general type of ensemble that blends _different types_ of models into an ensemble. 
+
+Breiman's [_model stacking_](https://scholar.google.com/scholar?hl=en&amp;as_sdt=0%2C7&amp;q=model+stacking+breiman&amp;btnG=&amp;oq=%22model+stacking%22+breiman) is a very early type of general ensembling technique. 
+
+We'll talk about linear stacking methods using the tidymodels framework in R via the new [`stacks`](https://github.com/tidymodels/stacks) package. 
+
+To illustrate, we'll walk through the main steps in creating a _model stack_. 
+
+---
+# Step 1: Define Multiple Models of Interest &lt;img src="images/parsnip.svg" class="title-hex"&gt;
+
+&lt;img src="images/diagrams.008.jpeg" width="90%" style="display: block; margin: auto;" /&gt;
+
+---
+# Step 1: Define Multiple Models of Interest &lt;img src="images/tune.svg" class="title-hex"&gt;&lt;img src="images/rules.svg" class="title-hex"&gt;&lt;img src="images/rsample.svg" class="title-hex"&gt;&lt;img src="images/recipes.svg" class="title-hex"&gt;&lt;img src="images/parsnip.svg" class="title-hex"&gt;&lt;img src="images/discrim.svg" class="title-hex"&gt;
+
+See [this file]() for all of the details for seven models.  
+
+
+
+.pull-left[
+Preliminary objects: 
+
+```r
+library(tidymodels)
+library(stacks)
+library(rules)
+library(discrim)
+
+data(cells)
+cells &lt;- cells %&gt;% select(-case)
+
+set.seed(4595)
+data_split &lt;- initial_split(cells, strata = "class")
+cell_train &lt;- training(data_split)
+cell_test  &lt;- testing(data_split)
+```
+] 
+
+.pull-right[
+Two example model specifications:
+
+```r
+ranger_spec &lt;-
+  rand_forest(mtry = tune(), min_n = tune(), 
+              trees = 1000) %&gt;%
+  set_mode("classification") %&gt;%
+  set_engine("ranger")
+  
+  
+
+nb_recipe &lt;-
+  recipe(formula = class ~ ., data = cell_train) %&gt;%
+  step_YeoJohnson(all_predictors())
+
+nb_spec &lt;-
+  naive_Bayes(smoothness = tune()) %&gt;%
+  set_mode("classification") %&gt;%
+  set_engine("klaR")
+
+nb_workflow &lt;-
+  workflow() %&gt;%
+  add_recipe(nb_recipe) %&gt;%
+  add_model(nb_spec)
+```
+
+]
+
+---
+# Step 2: Resample or Tune the Models &lt;img src="images/tune.svg" class="title-hex"&gt;
+
+&lt;img src="images/diagrams.009.jpeg" width="90%" style="display: block; margin: auto;" /&gt;
+
+---
+# Step 2: Resample or Tune the Models &lt;img src="images/tune.svg" class="title-hex"&gt;
+
+
+.pull-left[
+
+```r
+ctrl &lt;- control_grid(save_workflow = TRUE, 
+                     save_pred = TRUE)
+
+set.seed(2453)
+folds &lt;- vfold_cv(cell_train) 
+perf_metrics &lt;- metric_set(roc_auc)
+
+set.seed(41063)
+ranger_tune &lt;-
+  ranger_spec %&gt;% 
+  tune_grid(
+    class ~ .,
+    resamples = folds,
+    grid = 25,
+    metrics = perf_metrics,
+    control = ctrl
+  )
+```
+] 
+.pull-right[
+
+```r
+set.seed(21575)
+nb_tune &lt;-
+  tune_grid(
+    nb_workflow,
+    resamples = folds,
+    grid = 10,
+    metrics = perf_metrics,
+    control = ctrl
+  )
+```
+
+]
+
+
+
+---
+# Step 2: Resample or Tune the Models &lt;img src="images/tune.svg" class="title-hex"&gt;
+
+
+
+```r
+ranger_tune
+```
+
+```
+## # Tuning results
+## # 10-fold cross-validation 
+## # A tibble: 10 x 5
+##    splits             id     .metrics          .notes           .predictions        
+##    &lt;list&gt;             &lt;chr&gt;  &lt;list&gt;            &lt;list&gt;           &lt;list&gt;              
+##  1 &lt;split [1.4K/152]&gt; Fold01 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
+##  2 &lt;split [1.4K/152]&gt; Fold02 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
+##  3 &lt;split [1.4K/152]&gt; Fold03 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
+##  4 &lt;split [1.4K/152]&gt; Fold04 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
+##  5 &lt;split [1.4K/152]&gt; Fold05 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
+##  6 &lt;split [1.4K/151]&gt; Fold06 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
+##  7 &lt;split [1.4K/151]&gt; Fold07 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
+##  8 &lt;split [1.4K/151]&gt; Fold08 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
+##  9 &lt;split [1.4K/151]&gt; Fold09 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
+## 10 &lt;split [1.4K/151]&gt; Fold10 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
+```
+
+
+---
+# Step 2: Resample or Tune the Models &lt;img src="images/tune.svg" class="title-hex"&gt;
+
+&lt;table class="table" style="margin-left: auto; margin-right: auto;"&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Model &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Largest ROC AUC &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Sub-Models &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; boost_tree &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.9109 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 25 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; C5_rules &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.9073 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 150 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; discrim_flexible &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.9041 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 38 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; logistic_reg &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.8915 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 120 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; naive_Bayes &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.8765 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 10 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; rand_forest &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.9104 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 25 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; svm_rbf &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.9025 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 25 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+
+---
+# Step 3: Coolate the Out-of-Sample Predictions
+
+&lt;img src="images/diagrams.010.jpeg" width="90%" style="display: block; margin: auto;" /&gt;
+
+---
+# Step 3: Collate the Out-of-Sample Predictions &lt;img src="images/stacks.svg" class="title-hex"&gt;
+
+
+```r
+predictions &lt;- 
+  stacks() %&gt;% 
+  add_candidates(c5_tune) %&gt;%
+  add_candidates(glmnet_tune) %&gt;%
+  add_candidates(ranger_tune) %&gt;%
+  add_candidates(fda_tune) %&gt;%
+  add_candidates(nb_tune) %&gt;% 
+  add_candidates(svm_tune)
+predictions
+```
+
+```
+## # A data stack with 6 model definitions and 322 candidate members:
+## #   c5_tune: 150 sub-models
+## #   glmnet_tune: 80 sub-models
+## #   ranger_tune: 25 sub-models
+## #   fda_tune: 32 sub-models
+## #   nb_tune: 10 sub-models
+## #   svm_tune: 25 sub-models
+## # Outcome: class (factor)
+```
+
+---
+# Step 4: Fit the Ensemble Model
+
+
+&lt;img src="images/diagrams.011.jpeg" width="90%" style="display: block; margin: auto;" /&gt;
+
+
+---
+# Step 4: Fit the Ensemble Model  &lt;img src="images/stacks.svg" class="title-hex"&gt;
+
+.code95[
+
+
+```r
+ens_model &lt;- blend_predictions(predictions)
+ens_model
+```
+
+```
+## ── A stacked ensemble model ─────────────────────────────────────
+```
+
+```
+## 
+## Out of 322 possible blending coefficients, the ensemble used 9.
+## Lasso penalty: 0.1.
+```
+
+```
+## 
+## The 9 highest weighted member classes are:
+```
+
+```
+## # A tibble: 9 x 3
+##   member                 type              weight
+##   &lt;chr&gt;                  &lt;chr&gt;              &lt;dbl&gt;
+## 1 .pred_WS_ranger_tune11 rand_forest      1.08   
+## 2 .pred_WS_fda_tune25    discrim_flexible 0.627  
+## 3 .pred_WS_ranger_tune15 rand_forest      0.560  
+## 4 .pred_WS_c5_tune119    C5_rules         0.502  
+## 5 .pred_WS_c5_tune032    C5_rules         0.392  
+## 6 .pred_WS_c5_tune131    C5_rules         0.324  
+## 7 .pred_WS_c5_tune133    C5_rules         0.237  
+## 8 .pred_WS_c5_tune080    C5_rules         0.0364 
+## 9 .pred_WS_c5_tune026    C5_rules         0.00228
+```
+
+```
+## 
+## Members have not yet been fitted with `fit_members()`.
+```
+
+]
+
+---
+# Step 4: Fit the Ensemble Model  &lt;img src="images/stacks.svg" class="title-hex"&gt;&lt;img src="images/ggplot2.svg" class="title-hex"&gt;
+
+.pull-left[
+
+```r
+autoplot(ens_model)
+```
+
+&lt;img src="images/plot-model-1.svg" width="80%" style="display: block; margin: auto;" /&gt;
+]
+.pull-right[
+
+```r
+autoplot(ens_model, type = "weights")
+```
+
+&lt;img src="images/plot-weights-1.svg" width="80%" style="display: block; margin: auto;" /&gt;
+]
+
+---
+# Step 5: Fit the Consitutent Models  &lt;img src="images/stacks.svg" class="title-hex"&gt;
+
+
+
+&lt;img src="images/diagrams.012.jpeg" width="90%" style="display: block; margin: auto;" /&gt;
+
+
+
+---
+# Step 5: Fit the Consitutent Models  &lt;img src="images/stacks.svg" class="title-hex"&gt;
+
+
+```r
+ens_model &lt;- fit_members(ens_model)
+
+ens_model %&gt;% 
+  predict(cell_test, type = "prob") %&gt;% 
+  slice(1:5)
+```
+
+```
+## # A tibble: 5 x 2
+##   .pred_PS .pred_WS
+##      &lt;dbl&gt;    &lt;dbl&gt;
+## 1    0.858    0.142
+## 2    0.540    0.460
+## 3    0.866    0.134
+## 4    0.678    0.322
+## 5    0.336    0.664
+```
+
+
+
+---
+# Thanks!
+
+Thank you for the invitation to speak!
+
+Title art by [Luke Pennystan](https://unsplash.com/photos/09FcOqmi8R0).
+
+
+
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script src="https://platform.twitter.com/widgets.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "solarized-light",
+"highlightLanguage": "R",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
