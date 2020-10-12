@@ -68,6 +68,8 @@ class: title-slide, middle, center
 ---
 # Ensemble Models
 
+.pull-left[
+
 We typically think of models like random forest or boosting models when we talk about ensemble methods. 
 
  * These are combinations of the _same type_ of model (e.g. trees).
@@ -79,6 +81,15 @@ Breiman's [_model stacking_](https://scholar.google.com/scholar?hl=en&as_sdt=0%2
 We'll talk about linear stacking methods using the tidymodels framework in R via the new [`stacks`](https://github.com/tidymodels/stacks) package. 
 
 To illustrate, we'll walk through the main steps in creating a _model stack_. 
+
+]
+
+.pull-right[
+
+```{r survey, echo = FALSE}
+knitr::include_graphics("images/survey.png")
+```
+]
 
 ---
 # Step 1: Define Multiple Models of Interest `r I(hexes(c("parsnip")))`
@@ -194,11 +205,21 @@ load("cell_models.RData")
 ---
 # Step 2: Resample or Tune the Models `r I(hexes(c("tune")))`
 
+.code95[
 
-```{r ranger}
-ranger_tune
+.pull-left[
+```{r ranger-resamps}
+collect_metrics(ranger_tune, summarize = FALSE)
 ```
+]
+.pull-right[
+```{r ranger-pred}
+collect_predictions(ranger_tune) %>% 
+  arrange(.config, .row)
+```
+]
 
+]
 
 ---
 # Step 2: Resample or Tune the Models `r I(hexes(c("tune")))`
@@ -223,7 +244,6 @@ bind_rows(
   mod_summary(ranger_tune),
   mod_summary(fda_tune),
   mod_summary(nb_tune),
-  mod_summary(xgboost_tune),
   mod_summary(svm_tune)
 ) %>% 
   arrange(Model) %>% 
@@ -233,7 +253,7 @@ bind_rows(
 
 
 ---
-# Step 3: Coolate the Out-of-Sample Predictions
+# Step 3: Collate the Out-of-Sample Predictions
 
 ```{r model-pred-diagram, echo = FALSE, out.width="90%", fig.align="center"}
 knitr::include_graphics("images/diagrams.010.jpeg")
@@ -268,10 +288,39 @@ knitr::include_graphics("images/diagrams.011.jpeg")
 
 .code95[
 
+.pull-left[
+
 ```{r blend-model}
 ens_model <- blend_predictions(predictions)
 ens_model
 ```
+
+]
+
+.pull-right[
+
+The ensemble equation is saved as an expression so only the member prediction columns are required: 
+
+```r
+stats::binomial()$linkinv(
+  -(
+    -2.10099262632315 + 
+      (.pred_WS_c5_tune026    * 0.00228350891432108) + 
+      (.pred_WS_c5_tune032    * 0.392004897857771) + 
+      (.pred_WS_c5_tune080    * 0.036444840469837) + 
+      (.pred_WS_c5_tune119    * 0.50171218008217) + 
+      (.pred_WS_c5_tune131    * 0.324206144699012) + 
+      (.pred_WS_c5_tune133    * 0.236571695996249) + 
+      (.pred_WS_ranger_tune11 * 1.07510157259713) + 
+      (.pred_WS_ranger_tune15 * 0.559608803598168) + 
+      (.pred_WS_fda_tune25    * 0.627116371275035)
+  )
+)
+```
+
+These are evaluated in a `dplyr::mutate()` when `predict()` is called. 
+
+]
 
 ]
 
@@ -290,7 +339,7 @@ autoplot(ens_model, type = "weights")
 ]
 
 ---
-# Step 5: Fit the Consitutent Models  `r I(hexes(c("stacks")))`
+# Step 5: Fit the Constituent Models  `r I(hexes(c("stacks")))`
 
 
 
@@ -301,7 +350,9 @@ knitr::include_graphics("images/diagrams.012.jpeg")
 
 
 ---
-# Step 5: Fit the Consitutent Models  `r I(hexes(c("stacks")))`
+# Step 5: Fit the Constituent Models  `r I(hexes(c("stacks")))`
+
+.code97[
 
 ```{r member-fits}
 ens_model <- fit_members(ens_model)
@@ -309,9 +360,16 @@ ens_model <- fit_members(ens_model)
 ens_model %>% 
   predict(cell_test, type = "prob") %>% 
   slice(1:5)
+
+# Use the option `members = TRUE` to get the predictions for the nine ensemble members
+
+ens_model %>% 
+  predict(cell_test, type = "prob", members = TRUE) %>% 
+  select(contains("WS")) %>% 
+  slice(1:5)
 ```
 
-
+]
 
 ---
 # Thanks!

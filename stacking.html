@@ -4,7 +4,7 @@
     <title>Stack’Em High! Ensembles Using tidymodels</title>
     <meta charset="utf-8" />
     <meta name="author" content="Max Kuhn, Simon Couch" />
-    <meta name="date" content="2020-10-05" />
+    <meta name="date" content="2020-10-12" />
     <script src="libs/header-attrs-2.3/header-attrs.js"></script>
     <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
     <script src="libs/kePrint-0.0.1/kePrint.js"></script>
@@ -30,6 +30,8 @@ class: title-slide, middle, center
 ---
 # Ensemble Models
 
+.pull-left[
+
 We typically think of models like random forest or boosting models when we talk about ensemble methods. 
 
  * These are combinations of the _same type_ of model (e.g. trees).
@@ -41,6 +43,13 @@ Breiman's [_model stacking_](https://scholar.google.com/scholar?hl=en&amp;as_sdt
 We'll talk about linear stacking methods using the tidymodels framework in R via the new [`stacks`](https://github.com/tidymodels/stacks) package. 
 
 To illustrate, we'll walk through the main steps in creating a _model stack_. 
+
+]
+
+.pull-right[
+
+&lt;img src="images/survey.png" width="1109" /&gt;
+]
 
 ---
 # Step 1: Define Multiple Models of Interest &lt;img src="images/parsnip.svg" class="title-hex"&gt;
@@ -154,30 +163,57 @@ nb_tune &lt;-
 ---
 # Step 2: Resample or Tune the Models &lt;img src="images/tune.svg" class="title-hex"&gt;
 
+.code95[
 
+.pull-left[
 
 ```r
-ranger_tune
+collect_metrics(ranger_tune, summarize = FALSE)
 ```
 
 ```
-## # Tuning results
-## # 10-fold cross-validation 
-## # A tibble: 10 x 5
-##    splits             id     .metrics          .notes           .predictions        
-##    &lt;list&gt;             &lt;chr&gt;  &lt;list&gt;            &lt;list&gt;           &lt;list&gt;              
-##  1 &lt;split [1.4K/152]&gt; Fold01 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
-##  2 &lt;split [1.4K/152]&gt; Fold02 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
-##  3 &lt;split [1.4K/152]&gt; Fold03 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
-##  4 &lt;split [1.4K/152]&gt; Fold04 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
-##  5 &lt;split [1.4K/152]&gt; Fold05 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,800 × 7]&gt;
-##  6 &lt;split [1.4K/151]&gt; Fold06 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
-##  7 &lt;split [1.4K/151]&gt; Fold07 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
-##  8 &lt;split [1.4K/151]&gt; Fold08 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
-##  9 &lt;split [1.4K/151]&gt; Fold09 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
-## 10 &lt;split [1.4K/151]&gt; Fold10 &lt;tibble [25 × 6]&gt; &lt;tibble [0 × 1]&gt; &lt;tibble [3,775 × 7]&gt;
+## # A tibble: 250 x 7
+##    id      mtry min_n .metric .estimator .estimate .config
+##    &lt;chr&gt;  &lt;int&gt; &lt;int&gt; &lt;chr&gt;   &lt;chr&gt;          &lt;dbl&gt; &lt;chr&gt;  
+##  1 Fold01    27     5 roc_auc binary         0.893 Model01
+##  2 Fold02    27     5 roc_auc binary         0.927 Model01
+##  3 Fold03    27     5 roc_auc binary         0.901 Model01
+##  4 Fold04    27     5 roc_auc binary         0.875 Model01
+##  5 Fold05    27     5 roc_auc binary         0.916 Model01
+##  6 Fold06    27     5 roc_auc binary         0.893 Model01
+##  7 Fold07    27     5 roc_auc binary         0.914 Model01
+##  8 Fold08    27     5 roc_auc binary         0.927 Model01
+##  9 Fold09    27     5 roc_auc binary         0.905 Model01
+## 10 Fold10    27     5 roc_auc binary         0.911 Model01
+## # … with 240 more rows
+```
+]
+.pull-right[
+
+```r
+collect_predictions(ranger_tune) %&gt;% 
+  arrange(.config, .row)
 ```
 
+```
+## # A tibble: 37,875 x 8
+##    id     .pred_PS .pred_WS  .row  mtry min_n class .config
+##    &lt;chr&gt;     &lt;dbl&gt;    &lt;dbl&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt; &lt;fct&gt; &lt;chr&gt;  
+##  1 Fold10   0.424    0.576      1    27     5 WS    Model01
+##  2 Fold10   0.705    0.295      2    27     5 PS    Model01
+##  3 Fold08   0.980    0.0204     3    27     5 PS    Model01
+##  4 Fold01   0.0882   0.912      4    27     5 WS    Model01
+##  5 Fold10   0.188    0.812      5    27     5 WS    Model01
+##  6 Fold10   0.415    0.585      6    27     5 WS    Model01
+##  7 Fold08   0.718    0.282      7    27     5 WS    Model01
+##  8 Fold10   0.152    0.848      8    27     5 WS    Model01
+##  9 Fold08   0.789    0.212      9    27     5 WS    Model01
+## 10 Fold02   0.882    0.118     10    27     5 PS    Model01
+## # … with 37,865 more rows
+```
+]
+
+]
 
 ---
 # Step 2: Resample or Tune the Models &lt;img src="images/tune.svg" class="title-hex"&gt;
@@ -191,11 +227,6 @@ ranger_tune
   &lt;/tr&gt;
  &lt;/thead&gt;
 &lt;tbody&gt;
-  &lt;tr&gt;
-   &lt;td style="text-align:left;"&gt; boost_tree &lt;/td&gt;
-   &lt;td style="text-align:right;"&gt; 0.9109 &lt;/td&gt;
-   &lt;td style="text-align:right;"&gt; 25 &lt;/td&gt;
-  &lt;/tr&gt;
   &lt;tr&gt;
    &lt;td style="text-align:left;"&gt; C5_rules &lt;/td&gt;
    &lt;td style="text-align:right;"&gt; 0.9073 &lt;/td&gt;
@@ -231,7 +262,7 @@ ranger_tune
 
 
 ---
-# Step 3: Coolate the Out-of-Sample Predictions
+# Step 3: Collate the Out-of-Sample Predictions
 
 &lt;img src="images/diagrams.010.jpeg" width="90%" style="display: block; margin: auto;" /&gt;
 
@@ -273,6 +304,8 @@ predictions
 # Step 4: Fit the Ensemble Model  &lt;img src="images/stacks.svg" class="title-hex"&gt;
 
 .code95[
+
+.pull-left[
 
 
 ```r
@@ -317,6 +350,33 @@ ens_model
 
 ]
 
+.pull-right[
+
+The ensemble equation is saved as an expression so only the member prediction columns are required: 
+
+```r
+stats::binomial()$linkinv(
+  -(
+    -2.10099262632315 + 
+      (.pred_WS_c5_tune026    * 0.00228350891432108) + 
+      (.pred_WS_c5_tune032    * 0.392004897857771) + 
+      (.pred_WS_c5_tune080    * 0.036444840469837) + 
+      (.pred_WS_c5_tune119    * 0.50171218008217) + 
+      (.pred_WS_c5_tune131    * 0.324206144699012) + 
+      (.pred_WS_c5_tune133    * 0.236571695996249) + 
+      (.pred_WS_ranger_tune11 * 1.07510157259713) + 
+      (.pred_WS_ranger_tune15 * 0.559608803598168) + 
+      (.pred_WS_fda_tune25    * 0.627116371275035)
+  )
+)
+```
+
+These are evaluated in a `dplyr::mutate()` when `predict()` is called. 
+
+]
+
+]
+
 ---
 # Step 4: Fit the Ensemble Model  &lt;img src="images/stacks.svg" class="title-hex"&gt;&lt;img src="images/ggplot2.svg" class="title-hex"&gt;
 
@@ -338,7 +398,7 @@ autoplot(ens_model, type = "weights")
 ]
 
 ---
-# Step 5: Fit the Consitutent Models  &lt;img src="images/stacks.svg" class="title-hex"&gt;
+# Step 5: Fit the Constituent Models  &lt;img src="images/stacks.svg" class="title-hex"&gt;
 
 
 
@@ -347,7 +407,9 @@ autoplot(ens_model, type = "weights")
 
 
 ---
-# Step 5: Fit the Consitutent Models  &lt;img src="images/stacks.svg" class="title-hex"&gt;
+# Step 5: Fit the Constituent Models  &lt;img src="images/stacks.svg" class="title-hex"&gt;
+
+.code97[
 
 
 ```r
@@ -369,12 +431,37 @@ ens_model %&gt;%
 ## 5    0.336    0.664
 ```
 
+```r
+# Use the option `members = TRUE` to get the predictions from the
+# none ensemble members
 
+ens_model %&gt;% 
+  predict(cell_test, type = "prob", members = TRUE) %&gt;% 
+  select(contains("WS")) %&gt;% 
+  slice(1:5)
+```
+
+```
+## # A tibble: 5 x 10
+##   .pred_WS .pred_WS_c5_tun… .pred_WS_c5_tun… .pred_WS_c5_tun… .pred_WS_c5_tun… .pred_WS_c5_tun…
+##      &lt;dbl&gt;            &lt;dbl&gt;            &lt;dbl&gt;            &lt;dbl&gt;            &lt;dbl&gt;            &lt;dbl&gt;
+## 1    0.142            0                0               0.0326           0.0218           0.0196
+## 2    0.460            0.299            0.456           0.538            0.573            0.594 
+## 3    0.134            0                0               0.0385           0.0270           0.0241
+## 4    0.322            0.401            0.532           0.573            0.593            0.568 
+## 5    0.664            0.706            0.918           0.630            0.694            0.717 
+## # … with 4 more variables: .pred_WS_c5_tune133 &lt;dbl&gt;, .pred_WS_ranger_tune11 &lt;dbl&gt;,
+## #   .pred_WS_ranger_tune15 &lt;dbl&gt;, .pred_WS_fda_tune25 &lt;dbl&gt;
+```
+
+]
 
 ---
 # Thanks!
 
 Thank you for the invitation to speak!
+
+Slides are at [`https://github.com/topepo/2020-r-pharma`](https://github.com/topepo/2020-r-pharma). 
 
 Title art by [Luke Pennystan](https://unsplash.com/photos/09FcOqmi8R0).
 
